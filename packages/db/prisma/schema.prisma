@@ -1,0 +1,382 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id         BigInt     @id @default(autoincrement()) @db.UnsignedBigInt
+  name       String     @db.VarChar(255)
+  slug       String     @unique(map: "uq_tenants_slug") @db.VarChar(100)
+  plan       String     @default("free") @db.VarChar(20)
+  isActive   Boolean    @default(true) @map("is_active")
+  settings   Json?
+  createdAt  DateTime   @default(now()) @map("created_at")
+  deletedAt  DateTime?  @map("deleted_at")
+  audit_logs AuditLog[]
+  badges     Badge[]
+  courses    Course[]
+  roles      Role[]
+  users      User[]
+
+  @@map("tenants")
+}
+
+model User {
+  id                       BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId                 BigInt                  @map("tenant_id") @db.UnsignedBigInt
+  email                    String                  @db.VarChar(255)
+  full_name                String                  @db.VarChar(255)
+  hashedPassword           String?                 @map("hashed_password") @db.VarChar(255)
+  avatar_url               String?                 @db.Text
+  locale                   String                  @default("th") @db.VarChar(10)
+  isActive                 Boolean                 @default(true) @map("is_active")
+  last_login_at            DateTime?
+  createdAt                DateTime                @default(now()) @map("created_at")
+  deletedAt                DateTime?               @map("deleted_at")
+  certificates             Certificate[]
+  courses                  Course[]
+  enrollments              Enrollment[]
+  lesson_progress          LessonProgress[]
+  notifications            Notification[]
+  quiz_attempts            QuizAttempt[]
+  badges                   UserBadge[]
+  userRoles                UserRole[]
+  tenant                   Tenant                  @relation(fields: [tenantId], references: [id], onUpdate: Restrict, map: "fk_users_tenant")
+  video_question_responses VideoQuestionResponse[]
+
+  @@unique([tenantId, email], map: "uq_users_tenant_email")
+  @@index([tenantId, isActive], map: "idx_users_tenant_active")
+  @@map("users")
+}
+
+model Role {
+  id          BigInt     @id @default(autoincrement()) @db.UnsignedBigInt
+  tenant_id   BigInt     @db.UnsignedBigInt
+  name        String     @db.VarChar(100)
+  permissions Json
+  is_system   Boolean    @default(false)
+  tenants     Tenant     @relation(fields: [tenant_id], references: [id], onUpdate: Restrict, map: "fk_roles_tenant")
+  userRoles   UserRole[]
+
+  @@unique([tenant_id, name], map: "uq_roles_tenant_name")
+  @@map("roles")
+}
+
+model UserRole {
+  userId      BigInt   @map("user_id") @db.UnsignedBigInt
+  roleId      BigInt   @map("role_id") @db.UnsignedBigInt
+  assigned_by BigInt?  @db.UnsignedBigInt
+  assigned_at DateTime @default(now())
+  role        Role     @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_roles_role")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_roles_user")
+
+  @@id([userId, roleId])
+  @@index([roleId], map: "fk_user_roles_role")
+  @@map("user_roles")
+}
+
+model Course {
+  id               BigInt               @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt               @map("tenant_id") @db.UnsignedBigInt
+  created_by       BigInt               @db.UnsignedBigInt
+  title            String               @db.VarChar(500)
+  description      String?              @db.Text
+  thumbnailUrl     String?              @map("thumbnail_url") @db.Text
+  status           String               @default("draft") @db.VarChar(20)
+  language         String               @default("th") @db.VarChar(10)
+  duration_minutes Int?
+  published_at     DateTime?
+  createdAt        DateTime             @default(now()) @map("created_at")
+  deletedAt        DateTime?            @map("deleted_at")
+  certificates     Certificate[]
+  prerequisites    CoursePrerequisite[] @relation("course")
+  requiredBy       CoursePrerequisite[] @relation("prerequisite")
+  sections         CourseSection[]
+  users            User                 @relation(fields: [created_by], references: [id], onUpdate: Restrict, map: "fk_courses_creator")
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onUpdate: Restrict, map: "fk_courses_tenant")
+  enrollments      Enrollment[]
+  quizzes          Quiz[]
+
+  @@index([created_by], map: "idx_courses_creator")
+  @@index([tenantId, status, deletedAt], map: "idx_courses_tenant_status")
+  @@map("courses")
+}
+
+model CoursePrerequisite {
+  courseId       BigInt @map("course_id") @db.UnsignedBigInt
+  prerequisiteId BigInt @map("prerequisite_id") @db.UnsignedBigInt
+  course         Course @relation("course", fields: [courseId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_prereq_course")
+  prerequisite   Course @relation("prerequisite", fields: [prerequisiteId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_prereq_target")
+
+  @@id([courseId, prerequisiteId])
+  @@index([prerequisiteId], map: "idx_prereq_target")
+  @@map("course_prerequisites")
+}
+
+model CourseSection {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  courseId   BigInt   @map("course_id") @db.UnsignedBigInt
+  title      String   @db.VarChar(500)
+  sort_order Int      @default(0)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_sections_course")
+  lessons    Lesson[]
+
+  @@index([courseId, sort_order], map: "idx_sections_course_order")
+  @@map("course_sections")
+}
+
+model Lesson {
+  id               BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  sectionId        BigInt           @map("section_id") @db.UnsignedBigInt
+  title            String           @db.VarChar(500)
+  type             String           @db.VarChar(20)
+  content_url      String?          @db.Text
+  duration_seconds Int?
+  sort_order       Int              @default(0)
+  is_free_preview  Boolean          @default(false)
+  has_iv_questions Boolean          @default(false)
+  seek_mode        String           @default("free") @db.VarChar(20)
+  progress         LessonProgress[]
+  section          CourseSection    @relation(fields: [sectionId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_lessons_section")
+  quizzes          Quiz[]
+  videoQuestions   VideoQuestion[]
+
+  @@index([sectionId, sort_order], map: "idx_lessons_section_order")
+  @@map("lessons")
+}
+
+model Enrollment {
+  id                       BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
+  userId                   BigInt                  @map("user_id") @db.UnsignedBigInt
+  courseId                 BigInt                  @map("course_id") @db.UnsignedBigInt
+  status                   String                  @default("active") @db.VarChar(20)
+  progressPercent          Decimal?                @default(0.00) @map("progress_percent") @db.Decimal(5, 2)
+  source                   String?                 @db.VarChar(20)
+  payment_id               BigInt?                 @db.UnsignedBigInt
+  coupon_code              String?                 @db.VarChar(100)
+  enrolled_at              DateTime                @default(now())
+  completedAt              DateTime?               @map("completed_at")
+  expiresAt                DateTime?               @map("expires_at")
+  deletedAt                DateTime?               @map("deleted_at")
+  course                   Course                  @relation(fields: [courseId], references: [id], onUpdate: Restrict, map: "fk_enrollments_course")
+  user                     User                    @relation(fields: [userId], references: [id], onUpdate: Restrict, map: "fk_enrollments_user")
+  video_question_responses VideoQuestionResponse[]
+
+  @@unique([userId, courseId, deletedAt], map: "uq_enrollments_user_course")
+  @@index([courseId], map: "idx_enrollments_course")
+  @@index([userId, status], map: "idx_enrollments_user_status")
+  @@map("enrollments")
+}
+
+model LessonProgress {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId        BigInt    @map("user_id") @db.UnsignedBigInt
+  lessonId      BigInt    @map("lesson_id") @db.UnsignedBigInt
+  status        String    @default("not_started") @db.VarChar(20)
+  watch_seconds Int?      @default(0)
+  completedAt   DateTime? @map("completed_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  lesson        Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_lp_lesson")
+  users         User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_lp_user")
+
+  @@unique([userId, lessonId], map: "uq_lesson_progress_user_lesson")
+  @@index([lessonId], map: "fk_lp_lesson")
+  @@index([userId, status], map: "idx_lesson_progress_user_status")
+  @@map("lesson_progress")
+}
+
+model Quiz {
+  id                 BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  course_id          BigInt        @db.UnsignedBigInt
+  lessonId           BigInt?       @map("lesson_id") @db.UnsignedBigInt
+  title              String        @db.VarChar(500)
+  type               String        @default("graded") @db.VarChar(20)
+  passingScore       Int           @default(60) @map("passing_score")
+  time_limit_seconds Int?
+  maxAttempts        Int?          @map("max_attempts")
+  shuffle_questions  Boolean       @default(false)
+  questions          Question[]
+  attempts           QuizAttempt[]
+  courses            Course        @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_quizzes_course")
+  lesson             Lesson?       @relation(fields: [lessonId], references: [id], onUpdate: Restrict, map: "fk_quizzes_lesson")
+
+  @@index([lessonId], map: "fk_quizzes_lesson")
+  @@index([course_id], map: "idx_quizzes_course")
+  @@map("quizzes")
+}
+
+model Question {
+  id            BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  quizId        BigInt       @map("quiz_id") @db.UnsignedBigInt
+  type          String       @db.VarChar(20)
+  body          String       @db.Text
+  options       Json?
+  correctAnswer Json?        @map("correct_answer")
+  points        Int          @default(1)
+  sort_order    Int          @default(0)
+  explanation   String?      @db.Text
+  quiz          Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_questions_quiz")
+  answers       QuizAnswer[]
+
+  @@index([quizId, sort_order], map: "idx_questions_quiz_order")
+  @@map("questions")
+}
+
+model QuizAttempt {
+  id            BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  quizId        BigInt       @map("quiz_id") @db.UnsignedBigInt
+  userId        BigInt       @map("user_id") @db.UnsignedBigInt
+  attemptNumber Int          @default(1) @map("attempt_number")
+  score         Int?
+  passed        Boolean?
+  startedAt     DateTime     @default(now()) @map("started_at")
+  submittedAt   DateTime?    @map("submitted_at")
+  expires_at    DateTime?
+  answers       QuizAnswer[]
+  quiz          Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_attempts_quiz")
+  users         User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_attempts_user")
+
+  @@unique([userId, quizId, attemptNumber], map: "uq_attempts_user_quiz_num")
+  @@index([quizId], map: "fk_attempts_quiz")
+  @@index([userId, quizId], map: "idx_attempts_user_quiz")
+  @@map("quiz_attempts")
+}
+
+model QuizAnswer {
+  id         BigInt      @id @default(autoincrement()) @db.UnsignedBigInt
+  attemptId  BigInt      @map("attempt_id") @db.UnsignedBigInt
+  questionId BigInt      @map("question_id") @db.UnsignedBigInt
+  response   Json
+  isCorrect  Boolean?    @map("is_correct")
+  score      Int?
+  attempt    QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_answers_attempt")
+  question   Question    @relation(fields: [questionId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_answers_question")
+
+  @@unique([attemptId, questionId], map: "uq_quiz_answers_attempt_question")
+  @@index([questionId], map: "fk_answers_question")
+  @@index([attemptId], map: "idx_quiz_answers_attempt")
+  @@map("quiz_answers")
+}
+
+model VideoQuestion {
+  id               BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
+  lessonId         BigInt                  @map("lesson_id") @db.UnsignedBigInt
+  timestampSeconds Int                     @map("timestamp_seconds")
+  type             String                  @db.VarChar(20)
+  body             String                  @db.Text
+  options          Json?
+  correctAnswer    Json?                   @map("correct_answer")
+  explanation      String?                 @db.Text
+  is_blocking      Boolean                 @default(true)
+  can_skip_after   Int?
+  sort_order       Int                     @default(0)
+  createdAt        DateTime                @default(now()) @map("created_at")
+  responses        VideoQuestionResponse[]
+  lesson           Lesson                  @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_vq_lesson")
+
+  @@index([lessonId, sort_order], map: "idx_vq_lesson_order")
+  @@index([lessonId, timestampSeconds], map: "idx_vq_lesson_timestamp")
+  @@map("video_questions")
+}
+
+model VideoQuestionResponse {
+  id               BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  videoQuestionId  BigInt        @map("video_question_id") @db.UnsignedBigInt
+  userId           BigInt        @map("user_id") @db.UnsignedBigInt
+  enrollment_id    BigInt        @db.UnsignedBigInt
+  response         Json
+  isCorrect        Boolean?      @map("is_correct")
+  watch_session_id BigInt?       @db.UnsignedBigInt
+  responded_at     DateTime      @default(now())
+  enrollments      Enrollment    @relation(fields: [enrollment_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_vqr_enrollment")
+  videoQuestion    VideoQuestion @relation(fields: [videoQuestionId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_vqr_question")
+  users            User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_vqr_user")
+
+  @@index([videoQuestionId], map: "fk_vqr_question")
+  @@index([enrollment_id], map: "idx_vqr_enrollment")
+  @@index([watch_session_id], map: "idx_vqr_session")
+  @@index([userId, videoQuestionId], map: "idx_vqr_user_question")
+  @@map("video_question_responses")
+}
+
+model Certificate {
+  id                BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId            BigInt    @map("user_id") @db.UnsignedBigInt
+  courseId          BigInt    @map("course_id") @db.UnsignedBigInt
+  certificateNumber String    @unique(map: "uq_certificates_number") @map("certificate_number") @db.VarChar(100)
+  pdfUrl            String?   @map("pdf_url") @db.Text
+  issuedAt          DateTime  @default(now()) @map("issued_at")
+  expires_at        DateTime?
+  course            Course    @relation(fields: [courseId], references: [id], onUpdate: Restrict, map: "fk_certs_course")
+  user              User      @relation(fields: [userId], references: [id], onUpdate: Restrict, map: "fk_certs_user")
+
+  @@index([courseId], map: "fk_certs_course")
+  @@index([userId], map: "idx_certificates_user")
+  @@map("certificates")
+}
+
+model Badge {
+  id             BigInt      @id @default(autoincrement()) @db.UnsignedBigInt
+  tenant_id      BigInt      @db.UnsignedBigInt
+  name           String      @db.VarChar(255)
+  imageUrl       String?     @map("image_url") @db.Text
+  criteria_type  String      @db.VarChar(30)
+  criteria_value Json
+  tenants        Tenant      @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_badges_tenant")
+  userBadges     UserBadge[]
+
+  @@index([tenant_id], map: "idx_badges_tenant")
+  @@map("badges")
+}
+
+model UserBadge {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  userId    BigInt   @map("user_id") @db.UnsignedBigInt
+  badgeId   BigInt   @map("badge_id") @db.UnsignedBigInt
+  earned_at DateTime @default(now())
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_badges_badge")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_badges_user")
+
+  @@unique([userId, badgeId], map: "uq_user_badges_user_badge")
+  @@index([badgeId], map: "fk_user_badges_badge")
+  @@index([userId], map: "idx_user_badges_user")
+  @@map("user_badges")
+}
+
+model Notification {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  userId    BigInt   @map("user_id") @db.UnsignedBigInt
+  type      String   @db.VarChar(100)
+  title     String   @db.VarChar(500)
+  body      String?  @db.Text
+  metadata  Json?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_notif_user")
+
+  @@index([userId, isRead, createdAt], map: "idx_notif_user_unread")
+  @@map("notifications")
+}
+
+model AuditLog {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
+  actor_id      BigInt?  @db.UnsignedBigInt
+  action        String   @db.VarChar(100)
+  resource_type String   @db.VarChar(50)
+  resourceId    BigInt?  @map("resource_id") @db.UnsignedBigInt
+  payload       Json?
+  ip_address    String?  @db.VarChar(45)
+  user_agent    String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  tenants       Tenant   @relation(fields: [tenantId], references: [id], onUpdate: Restrict, map: "fk_audit_tenant")
+
+  @@index([actor_id, createdAt], map: "idx_audit_actor_time")
+  @@index([resource_type, resourceId], map: "idx_audit_resource")
+  @@index([tenantId, createdAt], map: "idx_audit_tenant_time")
+  @@map("audit_logs")
+}
