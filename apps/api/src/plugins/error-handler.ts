@@ -33,12 +33,13 @@ export default fp(async function errorHandlerPlugin(app: FastifyInstance) {
     }
 
     // Application error (thrown intentionally by services)
-    if (error instanceof AppError) {
-      return reply.status(error.statusCode).send({
+    if (error instanceof AppError || error.name === "AppError") {
+      const appErr = error as AppError;
+      return reply.status(appErr.statusCode).send({
         error: {
-          code: error.code,
-          message: error.message,
-          field: error.field,
+          code: appErr.code,
+          message: appErr.message,
+          field: appErr.field,
           request_id: request.id,
         },
       });

@@ -7,3 +7,10 @@ dist/
 *.log
 .DS_Store
 coverage/
+apps/api/public/uploads/
+apps/web/public/uploads/
+apps/web/tsconfig.tsbuildinfo
+scratch/
+test-*.js
+packages/db/check_*.ts
+packages/db/test_*.ts

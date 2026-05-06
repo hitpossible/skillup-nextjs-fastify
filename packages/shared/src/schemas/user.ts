@@ -8,12 +8,22 @@ export const CreateUserSchema = z.object({
   roleIds: z.array(z.string()).min(1),
 });
 
+export const NotificationPrefsSchema = z.object({
+  enrollment: z.boolean().optional(),
+  courseUpdate: z.boolean().optional(),
+  certificate: z.boolean().optional(),
+  system: z.boolean().optional(),
+});
+
 export const UpdateUserSchema = z.object({
   fullName: z.string().min(1).max(255).optional(),
   locale: z.string().max(10).optional(),
   isActive: z.boolean().optional(),
-  avatarUrl: z.string().url().optional().nullable(),
+  avatarUrl: z.string().optional().nullable(),
+  notificationPrefs: NotificationPrefsSchema.optional().nullable(),
 });
+
+export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
 
 export const UserResponseSchema = z.object({
   id: z.string(),

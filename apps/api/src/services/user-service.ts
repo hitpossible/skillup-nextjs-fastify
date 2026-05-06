@@ -11,6 +11,7 @@ const USER_SELECT = {
   avatar_url: true,
   locale: true,
   isActive: true,
+  notificationPrefs: true,
   createdAt: true,
   userRoles: { select: { role: { select: { name: true } } } },
 } as const;
@@ -23,6 +24,7 @@ function formatUser(
     avatar_url: string | null;
     locale: string;
     isActive: boolean;
+    notificationPrefs: unknown;
     createdAt: Date;
     userRoles: { role: { name: string } }[];
   }
@@ -34,6 +36,7 @@ function formatUser(
     avatarUrl: u.avatar_url,
     locale: u.locale,
     isActive: u.isActive,
+    notificationPrefs: u.notificationPrefs ?? null,
     roles: u.userRoles.map((ur) => ur.role.name),
     createdAt: u.createdAt.toISOString(),
   };
@@ -137,14 +140,18 @@ export async function updateUser(
   });
   if (!existing) throw new AppError(404, "NOT_FOUND", "User not found");
 
+  // Build update payload — avoid spread with optional undefined values (exactOptionalPropertyTypes)
+  const data: Record<string, unknown> = {};
+  if (input.fullName !== undefined) data["full_name"] = input.fullName;
+  if (input.locale !== undefined) data["locale"] = input.locale;
+  if (input.isActive !== undefined) data["isActive"] = input.isActive;
+  if (input.avatarUrl !== undefined) data["avatar_url"] = input.avatarUrl;
+  if (input.notificationPrefs !== undefined) data["notificationPrefs"] = input.notificationPrefs;
+
   const user = await app.prisma.user.update({
     where: { id: userId },
-    data: {
-      ...(input.fullName !== undefined ? { full_name: input.fullName } : {}),
-      ...(input.locale !== undefined ? { locale: input.locale } : {}),
-      ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-      ...(input.avatarUrl !== undefined ? { avatar_url: input.avatarUrl } : {}),
-    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: data as any,
     select: USER_SELECT,
   });
 

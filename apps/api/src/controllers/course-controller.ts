@@ -11,9 +11,14 @@ import {
 import {
   listCourses,
   getCourseById,
+  listCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
   createCourse,
   updateCourse,
   publishCourse,
+  unpublishCourse,
   deleteCourse,
   listSections,
   createSection,
@@ -22,6 +27,10 @@ import {
   createLesson,
   updateLesson,
   deleteLesson,
+  getLesson,
+  createVideoQuestion,
+  updateVideoQuestion,
+  deleteVideoQuestion,
 } from "../services/course-service.js";
 
 const IdParam = z.object({ id: z.string().min(1) });
@@ -42,6 +51,36 @@ export async function listCoursesHandler(req: FastifyRequest, reply: FastifyRepl
   const query = ListQuerySchema.parse(req.query);
   const result = await listCourses(req.server, req.tenantId, query);
   return reply.status(200).send(result);
+}
+
+export async function listCategoriesHandler(req: FastifyRequest, reply: FastifyReply) {
+  const categories = await listCategories(req.server, req.tenantId);
+  return reply.status(200).send(categories);
+}
+
+const CategoryBodySchema = z.object({
+  name: z.string().min(1).max(100),
+  slug: z.string().min(1).max(100).regex(/^[a-z0-9-]+$/, "Slug must be lowercase letters, numbers, and hyphens only"),
+});
+const CategoryIdParam = z.object({ categoryId: z.string().min(1) });
+
+export async function createCategoryHandler(req: FastifyRequest, reply: FastifyReply) {
+  const body = CategoryBodySchema.parse(req.body);
+  const category = await createCategory(req.server, req.tenantId, body);
+  return reply.status(201).send(category);
+}
+
+export async function updateCategoryHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { categoryId } = CategoryIdParam.parse(req.params);
+  const body = CategoryBodySchema.partial().parse(req.body);
+  const category = await updateCategory(req.server, req.tenantId, BigInt(categoryId), body);
+  return reply.status(200).send(category);
+}
+
+export async function deleteCategoryHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { categoryId } = CategoryIdParam.parse(req.params);
+  await deleteCategory(req.server, req.tenantId, BigInt(categoryId));
+  return reply.status(204).send();
 }
 
 export async function getCourseHandler(req: FastifyRequest, reply: FastifyReply) {
@@ -66,6 +105,12 @@ export async function updateCourseHandler(req: FastifyRequest, reply: FastifyRep
 export async function publishCourseHandler(req: FastifyRequest, reply: FastifyReply) {
   const { id } = IdParam.parse(req.params);
   const course = await publishCourse(req.server, req.tenantId, BigInt(id));
+  return reply.status(200).send(course);
+}
+
+export async function unpublishCourseHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = IdParam.parse(req.params);
+  const course = await unpublishCourse(req.server, req.tenantId, BigInt(id));
   return reply.status(200).send(course);
 }
 
@@ -123,4 +168,50 @@ export async function deleteLessonHandler(req: FastifyRequest, reply: FastifyRep
   const { courseId, sectionId, lessonId } = LessonIdParam.parse(req.params);
   await deleteLesson(req.server, req.tenantId, BigInt(courseId), BigInt(sectionId), BigInt(lessonId));
   return reply.status(204).send();
+}
+
+export async function getLessonHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { courseId, sectionId, lessonId } = LessonIdParam.parse(req.params);
+  const lesson = await getLesson(req.server, req.tenantId, BigInt(courseId), BigInt(sectionId), BigInt(lessonId));
+  return reply.status(200).send(lesson);
+}
+
+// ── Video Question handlers ───────────────────────────────────────────────────
+
+const VideoQuestionIdParam = z.object({
+  courseId: z.string().min(1),
+  sectionId: z.string().min(1),
+  lessonId: z.string().min(1),
+  questionId: z.string().min(1),
+});
+
+export async function createVideoQuestionHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { courseId, sectionId, lessonId } = LessonIdParam.parse(req.params);
+  const { CreateVideoQuestionSchema } = await import("@lms/shared/schemas");
+  const body = CreateVideoQuestionSchema.parse(req.body);
+  const vq = await createVideoQuestion(req.server, req.tenantId, BigInt(courseId), BigInt(sectionId), BigInt(lessonId), body);
+  return reply.status(201).send(vq);
+}
+
+export async function updateVideoQuestionHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { courseId, sectionId, lessonId, questionId } = VideoQuestionIdParam.parse(req.params);
+  const { UpdateVideoQuestionSchema } = await import("@lms/shared/schemas");
+  const body = UpdateVideoQuestionSchema.parse(req.body);
+  const vq = await updateVideoQuestion(req.server, req.tenantId, BigInt(courseId), BigInt(sectionId), BigInt(lessonId), BigInt(questionId), body);
+  return reply.status(200).send(vq);
+}
+
+export async function deleteVideoQuestionHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { courseId, sectionId, lessonId, questionId } = VideoQuestionIdParam.parse(req.params);
+  await deleteVideoQuestion(req.server, req.tenantId, BigInt(courseId), BigInt(sectionId), BigInt(lessonId), BigInt(questionId));
+  return reply.status(204).send();
+}
+
+export async function upsertLessonQuizHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { courseId, sectionId, lessonId } = LessonIdParam.parse(req.params);
+  const { UpsertLessonQuizSchema } = await import("@lms/shared/schemas");
+  const body = UpsertLessonQuizSchema.parse(req.body);
+  const { upsertLessonQuiz } = await import("../services/course-service.js");
+  const lesson = await upsertLessonQuiz(req.server, req.tenantId, BigInt(courseId), BigInt(sectionId), BigInt(lessonId), body);
+  return reply.status(200).send(lesson);
 }

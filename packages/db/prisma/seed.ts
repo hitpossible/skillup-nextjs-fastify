@@ -113,6 +113,29 @@ async function main() {
     create: { userId: learnerUser.id, roleId: learnerRole.id },
   });
   console.log(`✓ User roles assigned`);
+  
+  // ── Categories ───────────────────────────────────────────────────────────
+  const catSoftware = await prisma.category.upsert({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: "software-development" } },
+    update: {},
+    create: { tenantId: tenant.id, name: "การพัฒนาซอฟต์แวร์", slug: "software-development" },
+  });
+  const catBusiness = await prisma.category.upsert({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: "business" } },
+    update: {},
+    create: { tenantId: tenant.id, name: "ธุรกิจและการจัดการ", slug: "business" },
+  });
+  const catMarketing = await prisma.category.upsert({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: "marketing" } },
+    update: {},
+    create: { tenantId: tenant.id, name: "การตลาด", slug: "marketing" },
+  });
+  const catDesign = await prisma.category.upsert({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: "design" } },
+    update: {},
+    create: { tenantId: tenant.id, name: "การออกแบบ", slug: "design" },
+  });
+  console.log(`✓ Categories: ${catSoftware.name}, ${catBusiness.name}, ${catMarketing.name}, ${catDesign.name}`);
 
   // ── Course ───────────────────────────────────────────────────────────────
   const course = await prisma.course.upsert({
