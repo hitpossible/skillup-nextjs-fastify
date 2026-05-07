@@ -11,7 +11,7 @@ export async function authRoutes(app: FastifyInstance) {
   // POST /api/v1/auth/login
   app.post("/login", async (request, reply) => {
     const body = LoginBodySchema.parse(request.body);
-    const result = await login(app, body.tenantSlug, body.email, body.password);
+    const result = await login(app, body.tenantSlug, body.username, body.password);
     return reply.status(200).send({
       accessToken: result.tokens.accessToken,
       refreshToken: result.tokens.refreshToken,

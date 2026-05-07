@@ -54,6 +54,7 @@ export default async function LessonEditPage({ params }: { params: Promise<{ loc
           courseId={id}
           sectionId={sectionId}
           initialLesson={lesson}
+          course={course}
           dictionary={dictionary.lesson_editor}
           locale={locale}
         />

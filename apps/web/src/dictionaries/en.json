@@ -1,9 +1,9 @@
 {
   "auth": {
     "login": "Login",
-    "email": "Email",
+    "username": "Username",
     "password": "Password",
-    "placeholder_email": "Please enter your email",
+    "placeholder_username": "Please enter your username",
     "placeholder_password": "Please enter your password",
     "forgot_password": "Forgot password?",
     "submit_login": "Login",
@@ -11,7 +11,7 @@
     "login_with_google": "Login with Google",
     "no_account": "Don't have an account?",
     "create_account": "Create new account",
-    "error_invalid": "Invalid email or password",
+    "error_invalid": "Invalid username or password",
     "tagline": "Create Future You, Grow Up Better You"
   },
   "nav": {
@@ -34,7 +34,8 @@
     "no_notifications_description": "When you receive new notifications, they will appear here.",
     "view_all": "View All",
     "eligible_courses": "My Eligible Courses",
-    "logout": "Logout"
+    "logout": "Logout",
+    "certificates": "My Certificates"
   },
   "dashboard": {
     "welcome": "Hello",
@@ -134,6 +135,10 @@
     "lesson": "lesson",
     "congrats_all_complete": "Congrats! You've completed the course",
     "cert_issued": "You can now claim your certificate",
+    "view_certificate": "View Certificate",
+    "print_certificate": "Print / Save PDF",
+    "cert_issued_date": "Issue Date",
+    "cert_number": "Certificate Number",
     "saving_progress": "Saving...",
     "language_th": "Thai",
     "language_en": "English",
@@ -194,7 +199,7 @@
     "placeholder_description": "Describe what this course is about and what students will learn",
     "label_language": "Instruction Language",
     "label_category": "Category",
-    "placeholder_category": "e.g. Software Development, Marketing",
+    "placeholder_category": "Select Category",
     "label_thumbnail": "Course Thumbnail",
     "help_thumbnail": "Recommended size: 1280x720 pixels (16:9)",
     "upload_button": "Select Image",
@@ -510,6 +515,31 @@
     "lq_preview_score": "Your Score",
     "lq_preview_passed": "Passed!",
     "lq_preview_failed": "Not Passed",
-    "lq_preview_passing_required": "Passing score required"
+    "lq_preview_passing_required": "Passing score required",
+    "lq_type_multiple_choice": "Single Choice",
+    "lq_type_true_false": "True / False",
+    "lq_type_multiple_select": "Multiple Select",
+    "lq_type_short_answer": "Short Answer",
+    "lq_true": "True",
+    "lq_false": "False",
+    "lq_select_multiple_hint": "Select all correct answers",
+    "lq_validation_correct_multi": "Please select at least one correct answer",
+    "lq_short_answer_note": "No fixed answer — the instructor will review responses manually.",
+    "lq_short_answer_placeholder": "Type your answer here...",
+    "lq_manual_grading_badge": "Pending manual review",
+    "lq_clone_btn": "Clone from Another Lesson",
+    "lq_clone_title": "Clone Quiz",
+    "lq_clone_desc": "Select a lesson to copy its quiz questions and settings into this quiz.",
+    "lq_clone_no_quizzes": "No other lessons with quizzes found in this course.",
+    "lq_clone_confirm": "Clone",
+    "lq_clone_cancel": "Cancel",
+    "lq_clone_success": "Quiz cloned successfully",
+    "lq_shuffle_questions": "Shuffle Questions",
+    "lq_shuffle_questions_desc": "Questions will appear in a random order for each student",
+    "lq_show_correct_answers": "Show Correct Answers After Submission",
+    "lq_show_correct_answers_desc": "Students see the correct answers immediately after submitting",
+    "lq_require_all_sections": "Require All Sections Completed First",
+    "lq_require_all_sections_desc": "Students must finish all other lessons before they can attempt this quiz",
+    "lq_preview_answers_hidden": "Correct answers are hidden (based on your settings)"
   }
 }

@@ -61,10 +61,10 @@ export async function clearSession() {
   store.delete(REFRESH_TOKEN);
 }
 
-export async function loginAction(email: string, password: string) {
+export async function loginAction(username: string, password: string) {
   const data = await apiFetch<{ accessToken: string; refreshToken: string }>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ tenantSlug: TENANT_SLUG, email, password }),
+    body: JSON.stringify({ tenantSlug: TENANT_SLUG, username, password }),
   });
   await setSession(data.accessToken, data.refreshToken);
 }

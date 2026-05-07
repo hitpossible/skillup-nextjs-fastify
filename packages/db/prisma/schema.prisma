@@ -200,10 +200,12 @@ model Quiz {
   lessonId           BigInt?       @map("lesson_id") @db.UnsignedBigInt
   title              String        @db.VarChar(500)
   type               String        @default("graded") @db.VarChar(20)
-  passingScore       Int           @default(60) @map("passing_score")
-  time_limit_seconds Int?
-  maxAttempts        Int?          @map("max_attempts")
-  shuffle_questions  Boolean       @default(false)
+  passingScore          Int           @default(60) @map("passing_score")
+  time_limit_seconds    Int?
+  maxAttempts           Int?          @map("max_attempts")
+  shuffle_questions     Boolean       @default(false)
+  showCorrectAnswers    Boolean       @default(true)  @map("show_correct_answers")
+  requireAllSections    Boolean       @default(false) @map("require_all_sections")
   questions          Question[]
   attempts           QuizAttempt[]
   courses            Course        @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_quizzes_course")

@@ -16,10 +16,11 @@ import { useToast } from "@/hooks/use-toast"
 import {
   CheckCircle2, Circle, ChevronRight, ChevronLeft,
   PlayCircle, FileText, HelpCircle, Paperclip, Loader2,
-  ChevronDown, ChevronUp, BookOpen, Trophy, Lock, ExternalLink
+  ChevronDown, ChevronUp, BookOpen, Trophy, Lock, ExternalLink, Award
 } from "lucide-react"
-import { markLessonCompleteAction, saveLessonProgressAction, startQuizAttemptAction, submitQuizAttemptAction } from "./actions"
+import { markLessonCompleteAction, saveLessonProgressAction, startQuizAttemptAction, submitQuizAttemptAction, getLastQuizAttemptAction, getCertificateAction } from "./actions"
 import { cn } from "@/lib/utils"
+import { CertificateModal } from "./certificate-modal"
 
 interface LessonProgress {
   lessonId: string
@@ -53,14 +54,19 @@ interface QuizAttempt {
   startedAt: string
   expiresAt: string | null
   questions: QuizQuestion[]
+  showCorrectAnswers?: boolean
+  requireAllSections?: boolean
+  shuffleQuestions?: boolean
+  passingScore?: number
 }
 
 interface QuizResult {
   attemptId: string
+  attemptNumber: number
   score: number
   passingScore: number
   passed: boolean
-  answers: { questionId: string; isCorrect: boolean; score: number; correctAnswer: string | string[]; explanation: string | null }[]
+  answers: { questionId: string; questionBody?: string; questionType?: string; questionOptions?: string[]; isCorrect: boolean; score: number; response?: string | string[]; correctAnswer: string | string[] | null; explanation: string | null }[]
 }
 
 interface Lesson {
@@ -72,6 +78,7 @@ interface Lesson {
   isFreePreview: boolean
   seekMode?: string
   quizId?: string | null
+  quizRequireAllSections?: boolean
   attachments?: { title: string; url: string }[]
   videoQuestions?: VideoQuestion[]
 }
@@ -95,9 +102,10 @@ interface CoursePlayerProps {
   initialLessonId?: string
   dictionary: any
   locale: string
+  user?: { sub: string; fullName?: string }
 }
 
-export function CoursePlayer({ course, enrollment, initialProgress, initialLessonId, dictionary, locale }: CoursePlayerProps) {
+export function CoursePlayer({ course, enrollment, initialProgress, initialLessonId, dictionary, locale, user }: CoursePlayerProps) {
   const { toast } = useToast()
 
   // flatten all lessons
@@ -123,12 +131,16 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
 
   // Standalone quiz (quiz-type lesson)
   const [quizAttempt, setQuizAttempt] = useState<QuizAttempt | null>(null)
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({})
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string | string[]>>({})
   const [quizResult, setQuizResult] = useState<QuizResult | null>(null)
   const [quizStarting, setQuizStarting] = useState(false)
   const [quizSubmitting, setQuizSubmitting] = useState(false)
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
+  const [quizSettings, setQuizSettings] = useState<{ showCorrectAnswers: boolean; maxAttempts: number | null } | null>(null)
   const [maxWatchedTime, setMaxWatchedTime] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [certificate, setCertificate] = useState<{ certificateNumber: string; issuedAt: string; course: { title: string } } | null>(null)
+  const [certModalOpen, setCertModalOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   // YouTube API Handling
@@ -146,6 +158,14 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
   // Ref so interval callbacks always read the latest progress without needing to re-create the interval
   const isCompletedRef = useRef(isCompleted)
   isCompletedRef.current = isCompleted
+
+  // Auto-fetch certificate when course is completed
+  useEffect(() => {
+    if (progressPercent !== 100 || !user?.sub || certificate) return
+    getCertificateAction(user.sub, course.id).then(res => {
+      if (res.success && res.certificate) setCertificate(res.certificate)
+    })
+  }, [progressPercent])
 
   const currentIndex = allLessons.findIndex(l => l.id === currentLesson?.id)
   const prevLesson = currentIndex > 0 ? allLessons[currentIndex - 1] : null
@@ -190,6 +210,8 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
     setQuizAttempt(null)
     setQuizAnswers({})
     setQuizResult(null)
+    setQuizQuestions([])
+    setQuizSettings(null)
 
     const savedProgress = progress.find(p => p.lessonId === currentLesson?.id)
     const initialTime = savedProgress?.watchSeconds || 0
@@ -200,6 +222,37 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
     const isNativeVideo = !currentLesson?.contentUrl?.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]{11})/)
     if (isNativeVideo && videoRef.current) {
       videoRef.current.currentTime = initialTime
+    }
+
+    // Auto-load last attempt when revisiting a completed quiz lesson
+    if (currentLesson?.type === "quiz" && currentLesson.quizId) {
+      const lessonDone = savedProgress?.status === "completed"
+      if (lessonDone) {
+        getLastQuizAttemptAction(currentLesson.quizId).then(res => {
+          if (res.error || !res.result) return
+          const r = res.result
+          setQuizSettings({ showCorrectAnswers: r.showCorrectAnswers ?? true, maxAttempts: r.maxAttempts ?? null })
+          // rebuild quizQuestions and quizAnswers from stored answer data
+          const rebuilt: Record<string, string | string[]> = {}
+          const rebuiltQuestions: QuizQuestion[] = []
+          for (const a of r.answers ?? []) {
+            if (a.response != null) rebuilt[a.questionId] = a.response
+            if (a.questionBody != null) {
+              rebuiltQuestions.push({ id: a.questionId, type: a.questionType ?? "multiple_choice", body: a.questionBody, options: a.questionOptions ?? null, points: 0, sortOrder: 0 })
+            }
+          }
+          setQuizQuestions(rebuiltQuestions)
+          setQuizAnswers(rebuilt)
+          setQuizResult({
+            attemptId: r.attemptId,
+            attemptNumber: r.attemptNumber,
+            score: r.score,
+            passingScore: r.passingScore,
+            passed: r.passed,
+            answers: r.answers,
+          })
+        })
+      }
     }
   }, [currentLesson?.id])
 
@@ -294,6 +347,14 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
     if (nextLesson) setTimeout(() => selectLesson(nextLesson), 1000)
   }
 
+  const handleMultiSelectToggle = (questionId: string, opt: string) => {
+    setQuizAnswers(prev => {
+      const current = (prev[questionId] as string[] | undefined) || []
+      const updated = current.includes(opt) ? current.filter(v => v !== opt) : [...current, opt]
+      return { ...prev, [questionId]: updated }
+    })
+  }
+
   const handleStartQuiz = async () => {
     if (!currentLesson?.quizId) return
     setQuizStarting(true)
@@ -304,6 +365,8 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
       return
     }
     setQuizAttempt(res.attempt)
+    setQuizQuestions(res.attempt?.questions || [])
+    setQuizSettings({ showCorrectAnswers: res.attempt?.showCorrectAnswers ?? true, maxAttempts: res.attempt?.maxAttempts ?? null })
     setQuizAnswers({})
     setQuizResult(null)
   }
@@ -312,7 +375,9 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
     if (!quizAttempt) return
     const answers = quizAttempt.questions.map(q => ({
       questionId: q.id,
-      response: quizAnswers[q.id] ?? "",
+      response: q.type === "multiple_select"
+        ? ((quizAnswers[q.id] as string[]) || [])
+        : (quizAnswers[q.id] as string) ?? "",
     }))
     setQuizSubmitting(true)
     const res = await submitQuizAttemptAction(quizAttempt.attemptId, answers)
@@ -631,12 +696,22 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
                     <div className="p-3 bg-white rounded-full shadow-sm shrink-0">
                       <Trophy className="h-8 w-8 text-green-500" />
                     </div>
-                    <div>
-                      <div>
-                        <div className="font-bold text-lg text-green-800 mb-1">🎉 {dictionary.congrats_all_complete}</div>
-                        <div className="text-sm text-green-600/80 font-medium">{dictionary.cert_issued}</div>
-                      </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-lg text-green-800 mb-1">🎉 {dictionary.congrats_all_complete}</div>
+                      {certificate
+                        ? <div className="text-sm font-mono text-green-600/80 font-medium">{certificate.certificateNumber}</div>
+                        : <div className="text-sm text-green-600/80 font-medium">{dictionary.cert_issued}</div>
+                      }
                     </div>
+                    {certificate && (
+                      <Button
+                        onClick={() => setCertModalOpen(true)}
+                        className="shrink-0 rounded-full h-11 px-5 bg-green-600 hover:bg-green-700 text-white shadow-sm font-semibold gap-2"
+                      >
+                        <Award className="h-4 w-4" />
+                        {dictionary.view_certificate || "ดูใบประกาศ"}
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -717,42 +792,63 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
                 {currentLesson.type === "quiz" && (
                   <div className="space-y-0">
                     {/* Start view */}
-                    {!quizAttempt && !quizResult && (
-                      <div className="flex flex-col items-center py-16 gap-6 bg-white rounded-3xl border border-gray-100 shadow-sm">
-                        <div className="p-5 bg-red-50 rounded-full">
-                          <HelpCircle className="h-12 w-12 text-red-500" />
+                    {!quizAttempt && !quizResult && (() => {
+                      const otherLessons = allLessons.filter(l => l.id !== currentLesson.id)
+                      const otherCompleted = otherLessons.filter(l => isCompleted(l.id)).length
+                      const isLocked = currentLesson.quizRequireAllSections && otherCompleted < otherLessons.length
+                      return (
+                        <div className="flex flex-col items-center py-16 gap-6 bg-white rounded-3xl border border-gray-100 shadow-sm">
+                          <div className={cn("p-5 rounded-full", isLocked ? "bg-gray-100" : "bg-red-50")}>
+                            {isLocked
+                              ? <Lock className="h-12 w-12 text-gray-400" />
+                              : <HelpCircle className="h-12 w-12 text-red-500" />}
+                          </div>
+                          <div className="text-center space-y-2 px-6">
+                            <h2 className="text-2xl font-bold text-gray-900">
+                              {isLocked
+                                ? dictionary.quiz_locked_title || "ยังทำแบบทดสอบไม่ได้"
+                                : dictionary.quiz_ready || "Ready for quiz?"}
+                            </h2>
+                            <p className="text-gray-500">
+                              {isLocked
+                                ? dictionary.quiz_locked_desc || "ต้องเรียนเนื้อหาทุก lesson ให้จบก่อน จึงจะสามารถทำแบบทดสอบได้"
+                                : isCompleted(currentLesson.id)
+                                  ? dictionary.quiz_passed_retake || "You passed! You can retake if you want."
+                                  : dictionary.quiz_instruction || "Answer all questions and submit."}
+                            </p>
+                            {isLocked && (
+                              <p className="text-sm font-semibold text-gray-400">
+                                {dictionary.progress_label || "ความคืบหน้า"}: {otherLessons.length > 0 ? Math.round((otherCompleted / otherLessons.length) * 100) : 0}%
+                              </p>
+                            )}
+                          </div>
+                          {!currentLesson.quizId ? (
+                            <p className="text-sm text-red-400">{dictionary.no_quiz}</p>
+                          ) : isLocked ? null : (
+                            <Button
+                              onClick={handleStartQuiz}
+                              disabled={quizStarting}
+                              className="rounded-full px-14 h-14 bg-red-600 hover:bg-red-700 text-white font-bold shadow-md text-lg mt-2"
+                            >
+                              {quizStarting
+                                ? <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                : <HelpCircle className="h-5 w-5 mr-2" />}
+                              {isCompleted(currentLesson.id) ? dictionary.retake_quiz : dictionary.start_quiz}
+                            </Button>
+                          )}
                         </div>
-                        <div className="text-center space-y-2">
-                          <h2 className="text-2xl font-bold text-gray-900">{dictionary.quiz_ready || "Ready for quiz?"}</h2>
-                          <p className="text-gray-500">
-                            {isCompleted(currentLesson.id)
-                              ? dictionary.quiz_passed_retake || "You passed! You can retake if you want."
-                              : dictionary.quiz_instruction || "Answer all questions and submit."}
-                          </p>
-                        </div>
-                        {!currentLesson.quizId ? (
-                          <p className="text-sm text-red-400">{dictionary.no_quiz}</p>
-                        ) : (
-                          <Button
-                            onClick={handleStartQuiz}
-                            disabled={quizStarting}
-                            className="rounded-full px-14 h-14 bg-red-600 hover:bg-red-700 text-white font-bold shadow-md text-lg mt-2"
-                          >
-                            {quizStarting
-                              ? <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                              : <HelpCircle className="h-5 w-5 mr-2" />}
-                            {isCompleted(currentLesson.id) ? dictionary.retake_quiz : dictionary.start_quiz}
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     {/* In-progress view */}
                     {quizAttempt && !quizResult && (
                       <div className="space-y-6">
                         <div className="flex items-center justify-between py-2">
                           <span className="text-sm font-semibold text-gray-500">
-                          {Object.keys(quizAnswers).length}/{quizAttempt.questions.length} {dictionary.answered_count}
+                          {quizAttempt.questions.filter(q => {
+                            if (q.type === "multiple_select") return ((quizAnswers[q.id] as string[]) || []).length > 0
+                            return !!quizAnswers[q.id]
+                          }).length}/{quizAttempt.questions.length} {dictionary.answered_count}
                           </span>
                           <div className="h-1.5 flex-1 mx-4 bg-gray-100 rounded-full overflow-hidden">
                             <div
@@ -768,8 +864,78 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
                               <p className="font-semibold text-gray-900 text-[16px] leading-relaxed">
                                 <span className="text-red-500 font-bold mr-2">{dictionary.question_number} {idx + 1}.</span>{q.body}
                               </p>
+                              {q.type === "multiple_select" && (
+                                <p className="text-xs text-gray-400 mt-1">{dictionary.select_all_that_apply || "เลือกได้มากกว่า 1 ข้อ"}</p>
+                              )}
+                              {q.type === "short_answer" && (
+                                <p className="text-xs text-gray-400 mt-1">{dictionary.short_answer_note || "ผู้สอนจะตรวจคำตอบนี้"}</p>
+                              )}
                             </div>
-                            {q.options && (
+
+                            {/* true_false */}
+                            {q.type === "true_false" && (
+                              <div className="p-4 flex gap-3">
+                                {["true", "false"].map((opt) => (
+                                  <button
+                                    key={opt}
+                                    onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                                    className={cn(
+                                      "flex-1 py-4 rounded-xl border-2 text-[15px] font-bold transition-all",
+                                      quizAnswers[q.id] === opt
+                                        ? "border-red-500 bg-red-50 text-red-800"
+                                        : "border-gray-100 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                                    )}
+                                  >
+                                    {opt === "true" ? (dictionary.true_label || "ถูก ✓") : (dictionary.false_label || "ผิด ✗")}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* multiple_select */}
+                            {q.type === "multiple_select" && (
+                              <div className="p-4 space-y-2">
+                                {(q.options || []).map((opt, i) => {
+                                  const selected = ((quizAnswers[q.id] as string[]) || []).includes(opt)
+                                  return (
+                                    <button
+                                      key={i}
+                                      onClick={() => handleMultiSelectToggle(q.id, opt)}
+                                      className={cn(
+                                        "w-full text-left px-5 py-4 rounded-xl border-2 text-[15px] font-medium transition-all flex items-center gap-3",
+                                        selected
+                                          ? "border-red-500 bg-red-50 text-red-800"
+                                          : "border-gray-100 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        "w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-all",
+                                        selected ? "border-red-500 bg-red-500" : "border-gray-300"
+                                      )}>
+                                        {selected && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                      </div>
+                                      {opt}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+
+                            {/* short_answer */}
+                            {q.type === "short_answer" && (
+                              <div className="p-4">
+                                <textarea
+                                  rows={4}
+                                  placeholder={dictionary.short_answer_placeholder || "พิมพ์คำตอบของคุณที่นี่..."}
+                                  value={(quizAnswers[q.id] as string) || ""}
+                                  onChange={(e) => setQuizAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                  className="w-full border-2 border-gray-100 rounded-xl px-4 py-3 text-[15px] resize-none focus:outline-none focus:border-red-400 transition-colors"
+                                />
+                              </div>
+                            )}
+
+                            {/* multiple_choice (default) */}
+                            {(q.type === "multiple_choice" || (!q.type)) && q.options && (
                               <div className="p-4 space-y-2">
                                 {q.options.map((opt, i) => (
                                   <button
@@ -798,7 +964,11 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
 
 <Button
                           onClick={handleSubmitQuiz}
-                          disabled={quizSubmitting || quizAttempt.questions.some(q => !quizAnswers[q.id])}
+                          disabled={quizSubmitting || quizAttempt.questions.some(q => {
+                            if (q.type === "short_answer") return false
+                            if (q.type === "multiple_select") return ((quizAnswers[q.id] as string[]) || []).length === 0
+                            return !quizAnswers[q.id]
+                          })}
                           className="w-full rounded-2xl h-16 bg-red-600 hover:bg-red-700 text-white font-bold shadow-sm text-xl"
                         >
                           {quizSubmitting && <Loader2 className="h-6 w-6 animate-spin mr-2" />}
@@ -808,70 +978,281 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
                     )}
 
                     {/* Result view */}
-                    {quizResult && (
+                    {quizResult && (() => {
+                      const maxAttemptsReached = quizSettings?.maxAttempts != null && quizResult.attemptNumber >= quizSettings.maxAttempts
+                      const circumference = 2 * Math.PI * 52
+                      return (
                       <div className="space-y-6">
                         {/* Score card */}
                         <div className={cn(
-                          "rounded-3xl p-8 text-center border",
-                          quizResult.passed
-                            ? "bg-gradient-to-b from-green-50 to-emerald-50 border-green-200"
-                            : "bg-gradient-to-b from-red-50 to-red-100/50 border-red-200"
+                          "rounded-3xl overflow-hidden border shadow-sm",
+                          quizResult.passed ? "border-green-200" : "border-red-200"
                         )}>
-                          <div className={cn("inline-flex p-5 rounded-full mb-4", quizResult.passed ? "bg-green-100" : "bg-red-100")}>
-                            {quizResult.passed
-                              ? <Trophy className="h-10 w-10 text-green-600" />
-                              : <HelpCircle className="h-10 w-10 text-red-500" />}
+                          {/* Gradient banner */}
+                          <div className={cn(
+                            "px-8 pt-8 pb-7 text-center",
+                            quizResult.passed
+                              ? "bg-gradient-to-br from-green-500 to-emerald-600"
+                              : "bg-gradient-to-br from-red-500 to-rose-600"
+                          )}>
+                            {/* SVG Ring progress */}
+                            <div className="relative w-32 h-32 mx-auto mb-5">
+                              <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+                                <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="10" />
+                                <circle
+                                  cx="60" cy="60" r="52"
+                                  fill="none"
+                                  stroke="white"
+                                  strokeWidth="10"
+                                  strokeLinecap="round"
+                                  strokeDasharray={circumference}
+                                  strokeDashoffset={circumference * (1 - quizResult.score / 100)}
+                                />
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <span className="text-3xl font-black text-white leading-none">{quizResult.score}</span>
+                                <span className="text-white/70 text-xs font-bold tracking-wide">%</span>
+                              </div>
+                            </div>
+
+                            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-5 py-2">
+                              {quizResult.passed
+                                ? <Trophy className="h-5 w-5 text-yellow-300" />
+                                : <HelpCircle className="h-5 w-5 text-white/80" />}
+                              <span className="text-white font-bold text-[17px]">
+                                {quizResult.passed ? dictionary.quiz_passed : dictionary.quiz_failed}
+                              </span>
+                            </div>
                           </div>
-                          <div className={cn("text-5xl font-black mb-2", quizResult.passed ? "text-green-700" : "text-red-600")}>
-                            {quizResult.score}%
+
+                          {/* Stats row */}
+                          <div className={cn(
+                            "grid grid-cols-3 divide-x",
+                            quizResult.passed ? "bg-green-50 divide-green-100 border-t border-green-100" : "bg-red-50 divide-red-100 border-t border-red-100"
+                          )}>
+                            <div className="text-center px-4 py-4">
+                              <div className={cn("text-2xl font-black", quizResult.passed ? "text-green-700" : "text-red-600")}>{quizResult.score}%</div>
+                              <div className="text-[11px] font-semibold text-gray-400 mt-0.5 uppercase tracking-wide">{dictionary.your_score || "คะแนน"}</div>
+                            </div>
+                            <div className="text-center px-4 py-4">
+                              <div className="text-2xl font-black text-gray-600">{quizResult.passingScore}%</div>
+                              <div className="text-[11px] font-semibold text-gray-400 mt-0.5 uppercase tracking-wide">{dictionary.passing_score || "เกณฑ์ผ่าน"}</div>
+                            </div>
+                            <div className="text-center px-4 py-4">
+                              <div className="text-2xl font-black text-gray-600">
+                                {quizResult.attemptNumber}{quizSettings?.maxAttempts != null ? `/${quizSettings.maxAttempts}` : ""}
+                              </div>
+                              <div className="text-[11px] font-semibold text-gray-400 mt-0.5 uppercase tracking-wide">{dictionary.attempt_used || "ครั้งที่ทำ"}</div>
+                            </div>
                           </div>
-                          <div className={cn("text-lg font-bold mb-1", quizResult.passed ? "text-green-800" : "text-red-800")}>
-                            {quizResult.passed ? dictionary.quiz_passed : dictionary.quiz_failed}
-                          </div>
-                          <div className="text-sm text-gray-500 font-medium">{dictionary.passing_score}: {quizResult.passingScore}%</div>
+
+                          {/* Retake button */}
                           {!quizResult.passed && (
-                            <Button
-                              onClick={handleStartQuiz}
-                              disabled={quizStarting}
-                              className="mt-6 rounded-full px-8 h-11 bg-red-600 hover:bg-red-700 text-white font-semibold shadow-sm"
-                            >
-                              {quizStarting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                              {dictionary.try_again || "Try Again"}
-                            </Button>
+                            <div className="px-8 py-5 bg-white border-t border-gray-100">
+                              {maxAttemptsReached ? (
+                                <div className="text-center space-y-2">
+                                  <p className="text-sm text-gray-400 font-medium">
+                                    {dictionary.max_attempts_reached || "คุณทำแบบทดสอบครบกำหนดแล้ว ไม่สามารถทำซ้ำได้อีก"}
+                                  </p>
+                                  <Button disabled className="rounded-full px-8 h-10 bg-gray-100 text-gray-400 font-semibold cursor-not-allowed">
+                                    {dictionary.try_again || "Try Again"}
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  onClick={handleStartQuiz}
+                                  disabled={quizStarting}
+                                  className="w-full rounded-2xl h-12 bg-red-600 hover:bg-red-700 text-white font-bold shadow-sm"
+                                >
+                                  {quizStarting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                                  {dictionary.try_again || "Try Again"}
+                                </Button>
+                              )}
+                            </div>
                           )}
                         </div>
 
                         {/* Answer review */}
-                        <div className="space-y-4">
-                          <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide">{dictionary.review_answers || "Review Answers"}</h3>
-                          {quizResult.answers.map((ans, idx) => (
-                            <div key={ans.questionId} className={cn(
-                              "rounded-2xl border px-6 py-5",
-                              ans.isCorrect ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
-                            )}>
-                              <div className="flex items-start gap-3">
-                                <div className={cn("mt-0.5 shrink-0", ans.isCorrect ? "text-green-600" : "text-red-500")}>
-                                  {ans.isCorrect
-                                    ? <CheckCircle2 className="h-5 w-5" />
-                                    : <Circle className="h-5 w-5" />}
-                                </div>
-                                <div className="flex-1 space-y-1.5">
-                                  <p className="font-medium text-gray-800 text-sm">{dictionary.question_number} {idx + 1}</p>
-                                  {!ans.isCorrect && (
-                                    <p className="text-sm text-green-700 font-semibold">
-                                      {dictionary.correct_answer}: {Array.isArray(ans.correctAnswer) ? ans.correctAnswer.join(", ") : ans.correctAnswer}
-                                    </p>
-                                  )}
-                                  {ans.explanation && (
-                                    <p className="text-sm text-gray-600 leading-relaxed">💡 {ans.explanation}</p>
-                                  )}
-                                </div>
-                              </div>
+                        {quizResult.answers.length > 0 && (
+                          <div className="space-y-3">
+                            {/* Divider header */}
+                            <div className="flex items-center gap-3 px-1 py-1">
+                              <div className="h-px flex-1 bg-gray-200" />
+                              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                                {dictionary.review_answers || "Review Answers"}
+                              </span>
+                              <div className="h-px flex-1 bg-gray-200" />
                             </div>
-                          ))}
-                        </div>
+
+                            {/* Summary counts */}
+                            {quizSettings?.showCorrectAnswers !== false && (
+                              <div className="flex items-center gap-3 bg-white border border-gray-100 rounded-2xl px-5 py-3 shadow-sm">
+                                <div className="flex items-center gap-1.5 text-sm font-bold text-green-600">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  <span>{quizResult.answers.filter(a => a.isCorrect).length} ถูก</span>
+                                </div>
+                                <div className="h-4 w-px bg-gray-200" />
+                                <div className="flex items-center gap-1.5 text-sm font-bold text-red-500">
+                                  <Circle className="h-4 w-4" />
+                                  <span>{quizResult.answers.filter(a => !a.isCorrect && (a.questionType ?? "multiple_choice") !== "short_answer").length} ผิด</span>
+                                </div>
+                                {quizResult.answers.some(a => (a.questionType ?? "") === "short_answer") && (
+                                  <>
+                                    <div className="h-4 w-px bg-gray-200" />
+                                    <div className="flex items-center gap-1.5 text-sm font-bold text-amber-500">
+                                      <HelpCircle className="h-4 w-4" />
+                                      <span>{quizResult.answers.filter(a => (a.questionType ?? "") === "short_answer").length} รอตรวจ</span>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                            {quizResult.answers.map((ans, idx) => {
+                              const question = quizQuestions.find(q => q.id === ans.questionId)
+                              const qType = ans.questionType ?? question?.type ?? "multiple_choice"
+                              const isShortAnswer = qType === "short_answer"
+                              const showResultColors = quizSettings?.showCorrectAnswers !== false
+                              const userAnswer = ans.response ?? quizAnswers[ans.questionId]
+                              const selectedArr = Array.isArray(userAnswer) ? userAnswer : (userAnswer ? [userAnswer as string] : [])
+                              const correctArr = ans.correctAnswer
+                                ? (Array.isArray(ans.correctAnswer) ? ans.correctAnswer : [ans.correctAnswer as string])
+                                : []
+                              const options = ans.questionOptions ?? question?.options ?? []
+                              const qBody = ans.questionBody || question?.body
+
+                              const optionLabel = (val: string) =>
+                                val === "true" ? (dictionary.true_label || "ถูก ✓")
+                                : val === "false" ? (dictionary.false_label || "ผิด ✗")
+                                : val
+
+                              const getOptionStyle = (opt: string) => {
+                                const isSelected = selectedArr.includes(opt)
+                                const isCorrectOpt = correctArr.includes(opt)
+                                if (!showResultColors) {
+                                  return isSelected
+                                    ? { wrap: "border-red-500 bg-red-50 text-red-800", indicator: "border-red-500 bg-red-500" }
+                                    : { wrap: "border-gray-100 bg-white text-gray-700", indicator: "border-gray-300" }
+                                }
+                                if (isSelected && isCorrectOpt) return { wrap: "border-green-500 bg-green-50 text-green-800", indicator: "border-green-500 bg-green-500" }
+                                if (isSelected && !isCorrectOpt) return { wrap: "border-red-500 bg-red-50 text-red-800", indicator: "border-red-500 bg-red-500" }
+                                if (!isSelected && isCorrectOpt) return { wrap: "border-green-400 bg-green-50/50 text-green-700", indicator: "border-green-400 bg-green-400" }
+                                return { wrap: "border-gray-100 bg-white text-gray-400 opacity-50", indicator: "border-gray-200" }
+                              }
+
+                              return (
+                                <div key={ans.questionId} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                  {/* Header — same style as in-progress */}
+                                  <div className="px-7 py-5 border-b border-gray-50 bg-gray-50/50">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <p className="font-semibold text-gray-900 text-[16px] leading-relaxed">
+                                        <span className="text-red-500 font-bold mr-2">{dictionary.question_number} {idx + 1}.</span>{qBody}
+                                      </p>
+                                      {isShortAnswer ? (
+                                        <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
+                                          <HelpCircle className="h-3 w-3" />
+                                          {dictionary.pending_review || "รอตรวจ"}
+                                        </span>
+                                      ) : showResultColors ? (
+                                        ans.isCorrect ? (
+                                          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                            <CheckCircle2 className="h-3 w-3" /> ถูกต้อง
+                                          </span>
+                                        ) : (
+                                          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1 rounded-full">
+                                            <Circle className="h-3 w-3" /> ผิด
+                                          </span>
+                                        )
+                                      ) : null}
+                                    </div>
+                                    {qType === "multiple_select" && (
+                                      <p className="text-xs text-gray-400 mt-1">{dictionary.select_all_that_apply || "เลือกได้มากกว่า 1 ข้อ"}</p>
+                                    )}
+                                    {isShortAnswer && (
+                                      <p className="text-xs text-gray-400 mt-1">{dictionary.short_answer_note || "ผู้สอนจะตรวจคำตอบนี้"}</p>
+                                    )}
+                                  </div>
+
+                                  {/* true_false */}
+                                  {qType === "true_false" && (
+                                    <div className="p-4 flex gap-3">
+                                      {["true", "false"].map((opt) => {
+                                        const s = getOptionStyle(opt)
+                                        return (
+                                          <div key={opt} className={cn("flex-1 py-4 rounded-xl border-2 text-[15px] font-bold text-center", s.wrap)}>
+                                            {optionLabel(opt)}
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {/* multiple_select */}
+                                  {qType === "multiple_select" && (
+                                    <div className="p-4 space-y-2">
+                                      {options.map((opt, i) => {
+                                        const isSelected = selectedArr.includes(opt)
+                                        const s = getOptionStyle(opt)
+                                        return (
+                                          <div key={i} className={cn("w-full text-left px-5 py-4 rounded-xl border-2 text-[15px] font-medium flex items-center gap-3", s.wrap)}>
+                                            <div className={cn("w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center", s.indicator)}>
+                                              {isSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                            </div>
+                                            <span className="flex-1">{optionLabel(opt)}</span>
+                                            {showResultColors && correctArr.includes(opt) && !isSelected && (
+                                              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+                                            )}
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {/* short_answer */}
+                                  {isShortAnswer && (
+                                    <div className="p-4">
+                                      <div className="w-full border-2 border-gray-100 rounded-xl px-4 py-3 text-[15px] text-gray-700 min-h-[80px] bg-gray-50/50">
+                                        {(userAnswer as string) || <span className="text-gray-300">—</span>}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* multiple_choice (default) */}
+                                  {(qType === "multiple_choice" || (!qType)) && options.length > 0 && (
+                                    <div className="p-4 space-y-2">
+                                      {options.map((opt, i) => {
+                                        const isSelected = selectedArr.includes(opt)
+                                        const s = getOptionStyle(opt)
+                                        return (
+                                          <div key={i} className={cn("w-full text-left px-5 py-4 rounded-xl border-2 text-[15px] font-medium flex items-center gap-3", s.wrap)}>
+                                            <div className={cn("w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center", s.indicator)}>
+                                              {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                            </div>
+                                            <span className="flex-1">{optionLabel(opt)}</span>
+                                            {showResultColors && correctArr.includes(opt) && !isSelected && (
+                                              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+                                            )}
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {/* Explanation */}
+                                  {ans.explanation && (
+                                    <div className="mx-4 mb-4 flex gap-2.5 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-800">
+                                      <span className="shrink-0 text-base leading-snug">💡</span>
+                                      <span className="leading-relaxed">{ans.explanation}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
-                    )}
+                      )
+                    })()}
                   </div>
                 )}
 
@@ -1052,6 +1433,15 @@ export function CoursePlayer({ course, enrollment, initialProgress, initialLesso
           </>
         )}
       </aside>
+
+      {certModalOpen && certificate && (
+        <CertificateModal
+          certificate={certificate}
+          holderName={user?.fullName || ""}
+          onClose={() => setCertModalOpen(false)}
+          dictionary={dictionary}
+        />
+      )}
     </div>
   )
 }

@@ -1,18 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import {
   LogOut,
   Bell,
-  BookOpen,
-  Library,
-  FileText,
-  FileCheck,
-  ListVideo,
   Award,
-  Wallet,
-  Ticket,
   ChevronRight,
-  Users,
   User,
 } from "lucide-react"
 
@@ -109,7 +102,7 @@ export function NavUser({ dictionary, locale }: { dictionary: any, locale: strin
                 {user.avatarUrl ? (
                   <img src={getFullImageUrl(user.avatarUrl)} alt={displayName} className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-lg font-bold">{getInitials(user.fullName || displayName)}</span>
+                  <span className="text-lg font-bold">{getInitials(user.fullName ?? displayName ?? "")}</span>
                 )}
               </div>
               <div className="grid flex-1 text-left leading-tight">
@@ -159,12 +152,19 @@ export function NavUser({ dictionary, locale }: { dictionary: any, locale: strin
           </DropdownMenuGroup> */}
 
           <DropdownMenuSeparator className="my-2 bg-gray-100" />
-          
+
           <DropdownMenuGroup className="space-y-0.5">
-            {/* <DropdownMenuItem className="py-2.5 px-3 cursor-pointer text-[15px] font-medium text-gray-700 hover:bg-gray-50 rounded-xl">
-              <Ticket className="mr-3 size-[22px] text-gray-600" strokeWidth={1.5} />
-              แลกคูปอง
-            </DropdownMenuItem> */}
+            <DropdownMenuItem asChild>
+              <Link href={`/${locale}/certificates`} className="py-2.5 px-3 cursor-pointer text-[15px] font-medium text-gray-700 hover:bg-gray-50 rounded-xl flex items-center">
+                <Award className="mr-3 size-[22px] text-gray-600" strokeWidth={1.5} />
+                {dictionary.certificates}
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+
+          <DropdownMenuSeparator className="my-2 bg-gray-100" />
+
+          <DropdownMenuGroup className="space-y-0.5">
             <DropdownMenuItem 
               onSelect={async (e) => {
                 e.preventDefault();

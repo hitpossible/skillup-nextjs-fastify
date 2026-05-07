@@ -342,6 +342,8 @@ CREATE TABLE `quizzes` (
   `time_limit_seconds` int(11) DEFAULT NULL COMMENT 'NULL = no time limit',
   `max_attempts` int(11) DEFAULT NULL COMMENT 'NULL = unlimited',
   `shuffle_questions` tinyint(1) NOT NULL DEFAULT '0',
+  `show_correct_answers` tinyint(1) NOT NULL DEFAULT '1',
+  `require_all_sections` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `fk_quizzes_lesson` (`lesson_id`),
   KEY `idx_quizzes_course` (`course_id`),

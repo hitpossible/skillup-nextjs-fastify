@@ -1,9 +1,9 @@
 {
   "auth": {
     "login": "เข้าสู่ระบบ",
-    "email": "อีเมล",
+    "username": "ชื่อผู้ใช้",
     "password": "รหัสผ่าน",
-    "placeholder_email": "โปรดระบุอีเมล",
+    "placeholder_username": "โปรดระบุชื่อผู้ใช้",
     "placeholder_password": "โปรดระบุรหัสผ่าน",
     "forgot_password": "ลืมรหัสผ่าน?",
     "submit_login": "เข้าสู่ระบบ",
@@ -11,7 +11,7 @@
     "login_with_google": "เข้าสู่ระบบด้วย Google",
     "no_account": "ยังไม่มีบัญชี?",
     "create_account": "สร้างบัญชีผู้ใช้ใหม่",
-    "error_invalid": "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+    "error_invalid": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
     "tagline": "Create Future You, Grow Up Better You"
   },
   "nav": {
@@ -34,7 +34,8 @@
     "no_notifications_description": "เมื่อคุณได้รับการแจ้งเตือนใหม่ คุณจะเห็นการแจ้งเตือนนั้นแสดงอยู่ที่นี่",
     "view_all": "ดูทั้งหมด",
     "eligible_courses": "หลักสูตรที่มีสิทธิ์เรียนของฉัน",
-    "logout": "ออกจากระบบ"
+    "logout": "ออกจากระบบ",
+    "certificates": "ใบประกาศนียบัตรของฉัน"
   },
   "dashboard": {
     "welcome": "สวัสดี",
@@ -119,6 +120,10 @@
     "lesson": "บทเรียน",
     "congrats_all_complete": "ยินดีด้วย! คุณเรียนจบหลักสูตรนี้แล้ว",
     "cert_issued": "คุณสามารถรับใบประกาศนียบัตรได้แล้ว",
+    "view_certificate": "ดูใบประกาศ",
+    "print_certificate": "พิมพ์ / บันทึก PDF",
+    "cert_issued_date": "วันที่ออกใบประกาศ",
+    "cert_number": "เลขที่ใบประกาศ",
     "saving_progress": "กำลังบันทึก...",
     "language_th": "ภาษาไทย",
     "language_en": "ภาษาอังกฤษ",
@@ -179,7 +184,7 @@
     "placeholder_description": "อธิบายว่าคอร์สนี้เกี่ยวกับอะไร ผู้เรียนจะได้เรียนรู้อะไรบ้าง",
     "label_language": "ภาษาที่ใช้สอน",
     "label_category": "หมวดหมู่",
-    "placeholder_category": "เช่น การพัฒนาซอฟต์แวร์, การตลาด",
+    "placeholder_category": "เลือกหมวดหมู่",
     "label_thumbnail": "รูปหน้าปกคอร์ส",
     "help_thumbnail": "ขนาดที่แนะนำ 1280x720 พิกเซล (16:9)",
     "upload_button": "เลือกรูปภาพ",
@@ -495,6 +500,31 @@
     "lq_preview_score": "คะแนนของคุณ",
     "lq_preview_passed": "ผ่าน!",
     "lq_preview_failed": "ไม่ผ่าน",
-    "lq_preview_passing_required": "คะแนนขั้นต่ำที่ต้องได้"
+    "lq_preview_passing_required": "คะแนนขั้นต่ำที่ต้องได้",
+    "lq_type_multiple_choice": "เลือกตัวเลือกเดียว",
+    "lq_type_true_false": "ถูก / ผิด",
+    "lq_type_multiple_select": "เลือกหลายตัวเลือก",
+    "lq_type_short_answer": "พิมพ์คำตอบ",
+    "lq_true": "ถูก",
+    "lq_false": "ผิด",
+    "lq_select_multiple_hint": "เลือกทุกคำตอบที่ถูกต้อง",
+    "lq_validation_correct_multi": "กรุณาเลือกคำตอบที่ถูกต้องอย่างน้อย 1 ข้อ",
+    "lq_short_answer_note": "ไม่มีคำตอบตายตัว — ผู้สอนจะตรวจคำตอบด้วยตนเอง",
+    "lq_short_answer_placeholder": "พิมพ์คำตอบของคุณที่นี่...",
+    "lq_manual_grading_badge": "รอผู้สอนตรวจ",
+    "lq_clone_btn": "Clone จากบทเรียนอื่น",
+    "lq_clone_title": "Clone แบบทดสอบ",
+    "lq_clone_desc": "เลือกบทเรียนที่ต้องการ copy คำถามและการตั้งค่ามาใช้ในแบบทดสอบนี้",
+    "lq_clone_no_quizzes": "ไม่มีบทเรียนอื่นที่มีแบบทดสอบในคอร์สนี้",
+    "lq_clone_confirm": "Clone",
+    "lq_clone_cancel": "ยกเลิก",
+    "lq_clone_success": "Clone แบบทดสอบสำเร็จ",
+    "lq_shuffle_questions": "สุ่มลำดับคำถาม",
+    "lq_shuffle_questions_desc": "คำถามจะแสดงในลำดับแบบสุ่มสำหรับผู้เรียนแต่ละคน",
+    "lq_show_correct_answers": "แสดงเฉลยหลังส่งคำตอบ",
+    "lq_show_correct_answers_desc": "ผู้เรียนจะเห็นเฉลยทันทีหลังจากส่งคำตอบ",
+    "lq_require_all_sections": "ต้องทำบทเรียนอื่นให้ครบก่อน",
+    "lq_require_all_sections_desc": "ผู้เรียนต้องเรียนบทเรียนอื่นทั้งหมดให้ครบก่อน จึงจะทำแบบทดสอบนี้ได้",
+    "lq_preview_answers_hidden": "คำตอบที่ถูกถูกซ่อนอยู่ (ตามการตั้งค่าของคุณ)"
   }
 }

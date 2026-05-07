@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
-import { getCourseAnalytics, getUserReport, getLeaderboard, getCourseEnrollments, getUserQuizDetail } from "../services/analytics-service.js";
+import { getCourseAnalytics, getUserReport, getLeaderboard, getCourseEnrollments, getUserQuizDetail, updateQuizAnswerScore } from "../services/analytics-service.js";
 
 const IdParam = z.object({ id: z.string().min(1) });
 
@@ -33,10 +33,18 @@ async function userQuizDetailHandler(req: FastifyRequest, reply: FastifyReply) {
   return reply.status(200).send(result);
 }
 
+async function updateQuizAnswerScoreHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { attemptId, questionId } = z.object({ attemptId: z.string(), questionId: z.string() }).parse(req.params);
+  const { score } = z.object({ score: z.number().min(0) }).parse(req.body);
+  const result = await updateQuizAnswerScore(req.server, req.tenantId, BigInt(attemptId), BigInt(questionId), score);
+  return reply.status(200).send(result);
+}
+
 export async function analyticsRoutes(app: FastifyInstance) {
   app.get("/courses/:id", courseAnalyticsHandler);
   app.get("/courses/:id/enrollments", courseEnrollmentsHandler);
   app.get("/courses/:id/enrollments/:userId/quizzes", userQuizDetailHandler);
+  app.patch("/quiz-attempts/:attemptId/questions/:questionId/score", updateQuizAnswerScoreHandler);
   app.get("/users/:id/report", userReportHandler);
   app.get("/leaderboard", leaderboardHandler);
 }

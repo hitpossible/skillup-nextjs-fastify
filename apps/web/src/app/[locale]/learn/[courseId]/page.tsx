@@ -62,6 +62,7 @@ export default async function LearnCoursePage({
       initialLessonId={lessonId}
       dictionary={dict.learn}
       locale={locale}
+      user={session}
     />
   )
 }

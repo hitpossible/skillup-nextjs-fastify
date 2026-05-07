@@ -81,7 +81,7 @@ export async function getUserQuizDetail(
       title: true,
       passingScore: true,
       questions: {
-        select: { id: true, body: true, options: true, correctAnswer: true, points: true },
+        select: { id: true, type: true, body: true, options: true, correctAnswer: true, points: true },
         orderBy: { sort_order: "asc" },
       },
     },
@@ -136,6 +136,7 @@ export async function getUserQuizDetail(
           questionBody: q?.body ?? "",
           response: ans.response,
           options: q?.options,
+          type: q?.type,
           correctAnswer: q?.correctAnswer,
           isCorrect: ans.isCorrect,
           score: ans.score,
@@ -330,5 +331,79 @@ export async function getUserReport(
       enrolledAt: e.enrolled_at.toISOString(),
       completedAt: e.completedAt?.toISOString() ?? null,
     })),
+  };
+}
+
+// ── Update quiz answer score (instructor manual grading) ──────────────────────
+
+export async function updateQuizAnswerScore(
+  app: FastifyInstance,
+  tenantId: bigint,
+  attemptId: bigint,
+  questionId: bigint,
+  score: number
+) {
+  const answer = await app.prisma.quizAnswer.findFirst({
+    where: {
+      attemptId,
+      questionId,
+      attempt: {
+        quiz: {
+          courses: { tenantId },
+        },
+      },
+    },
+    include: {
+      question: { select: { points: true } },
+      attempt: {
+        select: {
+          quiz: { select: { passingScore: true } },
+        },
+      },
+    },
+  });
+
+  if (!answer) throw new AppError(404, "NOT_FOUND", "Answer not found");
+
+  // Validate score against max points
+  const maxPoints = answer.question.points;
+  if (score < 0 || score > maxPoints) {
+    throw new AppError(422, "INVALID_SCORE", `Score must be between 0 and ${maxPoints}`);
+  }
+
+  // Update this answer
+  await app.prisma.quizAnswer.update({
+    where: { id: answer.id },
+    data: {
+      score,
+      isCorrect: score === maxPoints, // If they get full marks, mark as correct
+    },
+  });
+
+  // Recalculate total score for the attempt
+  const allAnswers = await app.prisma.quizAnswer.findMany({
+    where: { attemptId },
+    include: { question: { select: { points: true } } },
+  });
+
+  let totalScore = 0;
+  let totalPoints = 0;
+  for (const a of allAnswers) {
+    totalScore += a.score ?? 0;
+    totalPoints += a.question.points;
+  }
+
+  const scorePercent = totalPoints > 0 ? Math.round((totalScore / totalPoints) * 100) : 0;
+  const passed = scorePercent >= (answer.attempt.quiz.passingScore ?? 60);
+
+  await app.prisma.quizAttempt.update({
+    where: { id: attemptId },
+    data: { score: scorePercent, passed },
+  });
+
+  return {
+    attemptId: attemptId.toString(),
+    newScore: scorePercent,
+    passed,
   };
 }

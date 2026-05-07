@@ -65,6 +65,19 @@ export async function deleteVideoQuestionAction(courseId: string, sectionId: str
   }
 }
 
+export async function getLessonAction(courseId: string, sectionId: string, lessonId: string) {
+  const token = await getAccessToken()
+  try {
+    const data = await apiFetch(`/courses/${courseId}/sections/${sectionId}/lessons/${lessonId}`, {
+      token: token ?? undefined,
+      cache: "no-store",
+    })
+    return { data }
+  } catch (error: any) {
+    return { error: error.message }
+  }
+}
+
 export async function upsertLessonQuizAction(courseId: string, sectionId: string, lessonId: string, data: any) {
   const token = await getAccessToken()
   try {

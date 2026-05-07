@@ -16,16 +16,17 @@ interface QuizAttempt {
   score: number | null
   passed: boolean | null
   submittedAt: string | null
-  answers: {
-    questionId: string
-    questionBody: string
-    response: unknown
-    options: any
-    correctAnswer: unknown
-    isCorrect: boolean | null
-    score: number | null
-    points: number
-  }[]
+    answers: {
+      questionId: string
+      questionBody: string
+      type?: string
+      response: unknown
+      options: any
+      correctAnswer: unknown
+      isCorrect: boolean | null
+      score: number | null
+      points: number
+    }[]
 }
 
 interface QuizData {
@@ -58,7 +59,69 @@ function fmt(iso: string, locale: string) {
   })
 }
 
-function AttemptBlock({ attempt, d, locale }: { attempt: QuizAttempt; d: any; locale: string }) {
+function GradeInput({
+  attemptId,
+  questionId,
+  currentScore,
+  maxPoints,
+  onUpdated,
+  d
+}: {
+  attemptId: string;
+  questionId: string;
+  currentScore: number;
+  maxPoints: number;
+  onUpdated: () => void;
+  d: any;
+}) {
+  const [score, setScore] = useState(currentScore);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/analytics/quiz-attempts/${attemptId}/questions/${questionId}/score`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ score }),
+      });
+      if (res.ok) {
+        onUpdated();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
+      <div className="flex-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+          {d.quiz_detail_grade ?? "ให้คะแนน"} (Max {maxPoints})
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={maxPoints}
+          value={score}
+          onChange={(e) => setScore(Number(e.target.value))}
+          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+        />
+      </div>
+      <button
+        onClick={handleSave}
+        disabled={saving || score === currentScore}
+        className="mt-5 px-4 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-bold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shrink-0"
+      >
+        {saving ? "..." : d.quiz_detail_save ?? "บันทึก"}
+      </button>
+    </div>
+  );
+}
+
+function AttemptBlock({ attempt, d, locale, onUpdated }: { attempt: QuizAttempt; d: any; locale: string; onUpdated: () => void }) {
   const [expanded, setExpanded] = useState(attempt.attemptNumber === 1)
 
   return (
@@ -186,6 +249,20 @@ function AttemptBlock({ attempt, d, locale }: { attempt: QuizAttempt; d: any; lo
                 </div>
               )}
 
+              {/* Manual Grading for Short Answer */}
+              {ans.type === "short_answer" && (
+                <div className="ml-9">
+                  <GradeInput
+                    attemptId={attempt.attemptId}
+                    questionId={ans.questionId}
+                    currentScore={ans.score ?? 0}
+                    maxPoints={ans.points}
+                    onUpdated={onUpdated}
+                    d={d}
+                  />
+                </div>
+              )}
+
               {/* Points */}
               <div className="ml-9 flex items-center gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
                 <span className={ans.isCorrect ? "text-green-600" : "text-red-400"}>
@@ -280,7 +357,7 @@ export function QuizDetailSheet({ open, onClose, userName, courseId, userId, loc
               ) : (
                 <div className="space-y-2">
                   {quiz.attempts.map(attempt => (
-                    <AttemptBlock key={attempt.attemptId} attempt={attempt} d={d} locale={locale} />
+                    <AttemptBlock key={attempt.attemptId} attempt={attempt} d={d} locale={locale} onUpdated={load} />
                   ))}
                 </div>
               )}

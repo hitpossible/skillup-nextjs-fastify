@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type { FastifyInstance } from "fastify";
 import type { JwtSignPayload } from "@lms/shared";
@@ -6,6 +5,26 @@ import { AppError } from "../plugins/error-handler.js";
 
 const ACCESS_TOKEN_TTL = "1h";
 const REFRESH_TOKEN_TTL = "30d";
+
+const AD_SERVICE_URL = process.env["AD_SERVICE_URL"] ?? "http://192.168.161.102:9999";
+
+interface AdLoginSuccess {
+  message: string;
+  passwordStatus: { isExpired: boolean; daysLeft: number; expiryDate: string; warning: string | null };
+  user: {
+    username: string;
+    email: string;
+    displayName: string;
+    position: string;
+    department: string;
+    employeeID: string;
+  };
+}
+
+interface AdLoginFail {
+  status: string;
+  message: string;
+}
 
 function getRefreshSecret(): string {
   return process.env["JWT_REFRESH_SECRET"] ?? "dev_refresh_secret_change_32chars!";
@@ -27,7 +46,7 @@ export interface AuthUser {
 export async function login(
   app: FastifyInstance,
   tenantSlug: string,
-  email: string,
+  username: string,
   password: string
 ): Promise<{ tokens: TokenPair; user: AuthUser }> {
   // tenant lookup ก่อน — ห้ามรับ tenant_id จาก body (CLAUDE.md)
@@ -36,33 +55,77 @@ export async function login(
     select: { id: true },
   });
   if (!tenant) {
-    throw new AppError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+    throw new AppError(401, "INVALID_CREDENTIALS", "Invalid username or password");
   }
 
-  const user = await app.prisma.user.findFirst({
-    where: { tenantId: tenant.id, email, isActive: true, deletedAt: null },
+  // ยืนยันตัวตนผ่าน AD service
+  let adUser: AdLoginSuccess["user"];
+  try {
+    const res = await fetch(`${AD_SERVICE_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as AdLoginFail;
+      if (body.status === "INVALID_CREDENTIALS") {
+        throw new AppError(401, "INVALID_CREDENTIALS", "Invalid username or password");
+      }
+      throw new AppError(401, "INVALID_CREDENTIALS", "Invalid username or password");
+    }
+
+    const body = await res.json() as AdLoginSuccess;
+    adUser = body.user;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    throw new AppError(503, "AD_SERVICE_UNAVAILABLE", "Authentication service unavailable");
+  }
+
+  const email = adUser.email.toLowerCase();
+
+  // หา user ใน DB — ถ้าไม่มีให้ auto-provision เป็น learner
+  let dbUser = await app.prisma.user.findFirst({
+    where: { tenantId: tenant.id, email, deletedAt: null },
     include: { userRoles: { include: { role: { select: { name: true } } } } },
   });
 
-  if (!user?.hashedPassword) {
-    throw new AppError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+  if (!dbUser) {
+    const learnerRole = await app.prisma.role.findFirst({
+      where: { tenant_id: tenant.id, name: "admin" },
+      select: { id: true },
+    });
+    if (!learnerRole) {
+      throw new AppError(500, "ROLE_NOT_FOUND", "Default learner role is not configured for this tenant");
+    }
+
+    dbUser = await app.prisma.user.create({
+      data: {
+        tenantId: tenant.id,
+        email,
+        full_name: adUser.displayName,
+        hashedPassword: null,
+        isActive: true,
+        userRoles: { create: [{ roleId: learnerRole.id }] },
+      },
+      include: { userRoles: { include: { role: { select: { name: true } } } } },
+    });
   }
 
-  const valid = await bcrypt.compare(password, user.hashedPassword);
-  if (!valid) {
-    throw new AppError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+  if (!dbUser.isActive) {
+    throw new AppError(401, "ACCOUNT_DISABLED", "Your account has been disabled");
   }
 
   await app.prisma.user.update({
-    where: { id: user.id },
+    where: { id: dbUser.id },
     data: { last_login_at: new Date() },
   });
 
-  const roles = user.userRoles.map((ur) => ur.role.name);
+  const roles = dbUser.userRoles.map((ur) => ur.role.name);
   const basePayload: JwtSignPayload = {
-    sub: user.id.toString(),
+    sub: dbUser.id.toString(),
     tenantId: tenant.id.toString(),
-    email: user.email,
+    email: dbUser.email,
     roles,
     type: "access",
   };
@@ -77,9 +140,9 @@ export async function login(
   return {
     tokens: { accessToken, refreshToken },
     user: {
-      id: user.id.toString(),
-      email: user.email,
-      fullName: user.full_name,
+      id: dbUser.id.toString(),
+      email: dbUser.email,
+      fullName: dbUser.full_name,
       tenantId: tenant.id.toString(),
       roles,
     },

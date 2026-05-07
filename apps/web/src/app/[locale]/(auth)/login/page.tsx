@@ -32,7 +32,7 @@ export default async function LoginPage({
       </div>
 
       <footer className="mt-8 text-center text-[10px] text-muted-foreground/50 tracking-wider">
-        © 2025 SKILLUP CO., LTD. ALL RIGHTS RESERVED.
+        © 2026 System Service Section, Business Management Department, TBKK (Thailand) Co., Ltd.
       </footer>
     </div>
   );

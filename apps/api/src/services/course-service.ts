@@ -27,7 +27,7 @@ function formatLesson(l: {
   has_iv_questions: boolean;
   seek_mode: string;
   attachments: any;
-  quizzes?: Array<{ id: bigint }>;
+  quizzes?: Array<{ id: bigint; requireAllSections: boolean }>;
   videoQuestions?: Array<{
     id: bigint;
     timestampSeconds: number;
@@ -52,6 +52,7 @@ function formatLesson(l: {
     seekMode: l.seek_mode,
     attachments: l.attachments,
     quizId: l.quizzes?.[0]?.id.toString() ?? null,
+    quizRequireAllSections: l.quizzes?.[0]?.requireAllSections ?? false,
     ...(l.videoQuestions
       ? {
           videoQuestions: l.videoQuestions.map(q => ({
@@ -213,7 +214,7 @@ export async function getCourseById(
           lessons: {
             select: {
               ...LESSON_SELECT,
-              quizzes: { select: { id: true }, take: 1 },
+              quizzes: { select: { id: true, requireAllSections: true }, take: 1 },
               videoQuestions: {
                 select: {
                   id: true,
@@ -668,6 +669,8 @@ export async function getLesson(
       timeLimitSeconds: qz.time_limit_seconds,
       maxAttempts: qz.maxAttempts,
       shuffleQuestions: qz.shuffle_questions,
+      showCorrectAnswers: qz.showCorrectAnswers,
+      requireAllSections: qz.requireAllSections,
       questions: qz.questions?.map((q: any) => ({
         id: q.id.toString(),
         quizId: q.quizId.toString(),
@@ -828,6 +831,8 @@ export async function upsertLessonQuiz(
         time_limit_seconds: input.timeLimitSeconds ?? null,
         maxAttempts: input.maxAttempts ?? null,
         shuffle_questions: input.shuffleQuestions,
+        showCorrectAnswers: input.showCorrectAnswers ?? true,
+        requireAllSections: input.requireAllSections ?? false,
       },
     });
   } else {
@@ -841,6 +846,8 @@ export async function upsertLessonQuiz(
         time_limit_seconds: input.timeLimitSeconds ?? null,
         maxAttempts: input.maxAttempts ?? null,
         shuffle_questions: input.shuffleQuestions,
+        showCorrectAnswers: input.showCorrectAnswers ?? true,
+        requireAllSections: input.requireAllSections ?? false,
       },
     });
   }

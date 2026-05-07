@@ -48,6 +48,8 @@ export async function getQuiz(
       maxAttempts: true,
       time_limit_seconds: true,
       shuffle_questions: true,
+      showCorrectAnswers: true,
+      requireAllSections: true,
       questions: {
         select: { id: true, type: true, body: true, options: true, points: true, sort_order: true },
         orderBy: { sort_order: "asc" },
@@ -85,6 +87,8 @@ export async function getQuiz(
     maxAttempts: quiz.maxAttempts,
     timeLimitSeconds: quiz.time_limit_seconds,
     shuffleQuestions: quiz.shuffle_questions,
+    showCorrectAnswers: quiz.showCorrectAnswers,
+    requireAllSections: quiz.requireAllSections,
     attemptsUsed,
     questions: quiz.questions.map(formatQuestion),
   };
@@ -106,6 +110,9 @@ export async function startAttempt(
       maxAttempts: true,
       time_limit_seconds: true,
       shuffle_questions: true,
+      passingScore: true,
+      showCorrectAnswers: true,
+      requireAllSections: true,
       questions: {
         select: { id: true, type: true, body: true, options: true, points: true, sort_order: true },
         orderBy: { sort_order: "asc" },
@@ -129,7 +136,60 @@ export async function startAttempt(
     throw new AppError(403, "NOT_ENROLLED", "Active enrollment required to start a quiz");
   }
 
-  // business rule #2 — max_attempts check
+  // business rule — requireAllSections: all non-quiz lessons must be completed first
+  if (quiz.requireAllSections) {
+    const allLessons = await app.prisma.lesson.findMany({
+      where: {
+        section: { courseId: quiz.course_id },
+        type: { not: "quiz" },
+      },
+      select: { id: true },
+    });
+
+    if (allLessons.length > 0) {
+      const completedCount = await app.prisma.lessonProgress.count({
+        where: {
+          userId,
+          lessonId: { in: allLessons.map(l => l.id) },
+          status: "completed",
+        },
+      });
+      if (completedCount < allLessons.length) {
+        throw new AppError(
+          422,
+          "SECTIONS_INCOMPLETE",
+          "You must complete all lessons before taking this quiz"
+        );
+      }
+    }
+  }
+
+  const questions = quiz.questions.map(formatQuestion);
+  const quizMeta = {
+    passingScore: quiz.passingScore,
+    maxAttempts: quiz.maxAttempts,
+    showCorrectAnswers: quiz.showCorrectAnswers,
+    requireAllSections: quiz.requireAllSections,
+    shuffleQuestions: quiz.shuffle_questions,
+  };
+
+  // resume existing in-progress attempt instead of blocking
+  const inProgress = await app.prisma.quizAttempt.findFirst({
+    where: { userId, quizId, submittedAt: null },
+    select: { id: true, attemptNumber: true, startedAt: true, expires_at: true },
+  });
+  if (inProgress) {
+    return {
+      attemptId: inProgress.id.toString(),
+      attemptNumber: inProgress.attemptNumber,
+      startedAt: inProgress.startedAt.toISOString(),
+      expiresAt: inProgress.expires_at?.toISOString() ?? null,
+      questions,
+      ...quizMeta,
+    };
+  }
+
+  // business rule #2 — max_attempts check (only for new attempts)
   if (quiz.maxAttempts !== null) {
     const submitted = await app.prisma.quizAttempt.count({
       where: { userId, quizId, submittedAt: { not: null } },
@@ -137,15 +197,6 @@ export async function startAttempt(
     if (submitted >= quiz.maxAttempts) {
       throw new AppError(422, "MAX_ATTEMPTS_REACHED", "Maximum number of attempts reached");
     }
-  }
-
-  // block concurrent in-progress attempt
-  const inProgress = await app.prisma.quizAttempt.findFirst({
-    where: { userId, quizId, submittedAt: null },
-    select: { id: true },
-  });
-  if (inProgress) {
-    throw new AppError(409, "ATTEMPT_IN_PROGRESS", "An unsubmitted attempt already exists");
   }
 
   const lastAttempt = await app.prisma.quizAttempt.findFirst({
@@ -164,9 +215,9 @@ export async function startAttempt(
     select: { id: true, attemptNumber: true, startedAt: true, expires_at: true },
   });
 
-  let questions = quiz.questions.map(formatQuestion);
+  let orderedQuestions = [...questions];
   if (quiz.shuffle_questions) {
-    questions = questions.sort(() => Math.random() - 0.5);
+    orderedQuestions = orderedQuestions.sort(() => Math.random() - 0.5);
   }
 
   return {
@@ -174,7 +225,8 @@ export async function startAttempt(
     attemptNumber: attempt.attemptNumber,
     startedAt: attempt.startedAt.toISOString(),
     expiresAt: attempt.expires_at?.toISOString() ?? null,
-    questions,
+    questions: orderedQuestions,
+    ...quizMeta,
   };
 }
 
@@ -305,5 +357,78 @@ export async function submitAttempt(
     passed,
     submittedAt: submittedAt.toISOString(),
     answers: answerResults,
+  };
+}
+
+// ── Get last submitted attempt ────────────────────────────────────────────────
+
+export async function getLastAttempt(
+  app: FastifyInstance,
+  tenantId: bigint,
+  userId: bigint,
+  quizId: bigint
+) {
+  const quiz = await app.prisma.quiz.findFirst({
+    where: { id: quizId, courses: { tenantId } },
+    select: {
+      id: true,
+      course_id: true,
+      passingScore: true,
+      maxAttempts: true,
+      showCorrectAnswers: true,
+      questions: {
+        select: { id: true, type: true, body: true, options: true, points: true, sort_order: true, correctAnswer: true, explanation: true },
+      },
+    },
+  });
+  if (!quiz) throw new AppError(404, "NOT_FOUND", "Quiz not found");
+
+  const attempt = await app.prisma.quizAttempt.findFirst({
+    where: { userId, quizId, submittedAt: { not: null } },
+    orderBy: { attemptNumber: "desc" },
+    select: {
+      id: true,
+      attemptNumber: true,
+      score: true,
+      passed: true,
+      submittedAt: true,
+      answers: {
+        select: { questionId: true, response: true, isCorrect: true, score: true },
+      },
+    },
+  });
+  if (!attempt) throw new AppError(404, "NOT_FOUND", "No submitted attempt found");
+
+  const questionMap = new Map(quiz.questions.map(q => [q.id.toString(), q]));
+
+  const answers = attempt.answers.map(a => {
+    const q = questionMap.get(a.questionId.toString());
+    const correct = q ? normaliseAnswer(q.correctAnswer) : [];
+    const response = normaliseAnswer(a.response);
+    return {
+      questionId: a.questionId.toString(),
+      questionBody: q?.body ?? "",
+      questionType: q?.type ?? "multiple_choice",
+      questionOptions: Array.isArray(q?.options) ? (q.options as string[]) : [],
+      isCorrect: a.isCorrect ?? false,
+      score: a.score ?? 0,
+      response: response.length === 1 ? response[0]! : response,
+      correctAnswer: quiz.showCorrectAnswers
+        ? correct.length === 1 ? correct[0]! : correct
+        : null,
+      explanation: q?.explanation ?? null,
+    };
+  });
+
+  return {
+    attemptId: attempt.id.toString(),
+    attemptNumber: attempt.attemptNumber,
+    score: attempt.score ?? 0,
+    passingScore: quiz.passingScore,
+    passed: attempt.passed ?? false,
+    submittedAt: attempt.submittedAt!.toISOString(),
+    showCorrectAnswers: quiz.showCorrectAnswers,
+    maxAttempts: quiz.maxAttempts,
+    answers,
   };
 }

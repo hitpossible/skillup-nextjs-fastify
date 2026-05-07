@@ -85,6 +85,8 @@ export const UpsertLessonQuizSchema = z.object({
   timeLimitSeconds: z.number().int().nullable().optional(),
   maxAttempts: z.number().int().nullable().optional(),
   shuffleQuestions: z.boolean().default(false),
+  showCorrectAnswers: z.boolean().default(true),
+  requireAllSections: z.boolean().default(false),
   questions: z.array(QuestionSchema).optional(),
 });
 

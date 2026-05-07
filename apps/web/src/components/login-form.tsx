@@ -13,11 +13,11 @@ import logo from "../../public/logos/skillup-logo.png"
 
 async function handleLogin(formData: FormData) {
   "use server"
-  const email = formData.get("email") as string
+  const username = formData.get("username") as string
   const password = formData.get("password") as string
   const locale = (formData.get("locale") as string) || "th"
   try {
-    await loginAction(email, password)
+    await loginAction(username, password)
   } catch {
     redirect(`/${locale}/login?error=1`)
   }
@@ -66,14 +66,14 @@ export function LoginForm({ className, error, dictionary, locale }: LoginFormPro
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-bold flex items-center gap-1">
-                {dictionary.email} <span className="text-red-500">*</span>
+              <Label htmlFor="username" className="text-sm font-bold flex items-center gap-1">
+                {dictionary.username} <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder={dictionary.placeholder_email}
+                id="username"
+                name="username"
+                type="text"
+                placeholder={dictionary.placeholder_username}
                 required
                 className="h-12 rounded-xl border-gray-200 focus-visible:ring-gray-200"
               />
@@ -107,7 +107,7 @@ export function LoginForm({ className, error, dictionary, locale }: LoginFormPro
               </Button>
             </div>
 
-            <div className="relative flex items-center py-2">
+            {/* <div className="relative flex items-center py-2">
               <div className="flex-grow border-t border-gray-100"></div>
               <span className="flex-shrink mx-4 text-xs text-gray-400 font-medium uppercase tracking-wider">{dictionary.or}</span>
               <div className="flex-grow border-t border-gray-100"></div>
@@ -141,7 +141,7 @@ export function LoginForm({ className, error, dictionary, locale }: LoginFormPro
 
             <p className="text-center text-sm font-bold text-gray-700 pt-2">
               {dictionary.no_account} <a href="#" className="text-[#FF3333] hover:underline">{dictionary.create_account}</a>
-            </p>
+            </p> */}
           </form>
         </CardContent>
       </Card>
